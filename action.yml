@@ -1,8 +1,5 @@
-name: pravo
-description: >
-  Runs pravo in a workflow. plan stores a plan and comments it on the pull
-  request, apply applies a stored plan by its id, drift and discover keep one
-  issue up to date with what they find.
+name: Pravo plan, apply and drift
+description: Run pravo plan, apply, drift and discover in a workflow, with a pull request comment and an issue.
 branding:
   icon: git-pull-request
   color: blue
