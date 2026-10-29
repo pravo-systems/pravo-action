@@ -103,8 +103,10 @@ case $command in
 plan)
 	need_markdown
 	words=(plan --markdown)
-	[ "${INPUT_STORE:-true}" = true ] && words+=(--store)
-	[ -n "${INPUT_TTL:-}" ] && words+=(--ttl "$INPUT_TTL")
+	if [ "${INPUT_STORE:-true}" = true ]; then
+		words+=(--store)
+		[ -n "${INPUT_TTL:-}" ] && words+=(--ttl "$INPUT_TTL")
+	fi
 	pravo_run "$report" "${words[@]}"
 	rc=$?
 	cat "$errlog" >&2

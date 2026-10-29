@@ -47,7 +47,7 @@ inputs:
     description: "plan: store the plan in the state, so that apply can use its id."
     default: "true"
   ttl:
-    description: "plan: how long a stored plan that is not applied is kept, such as 36h or 7d."
+    description: "plan: with store, how long a stored plan that is not applied is kept, such as 36h or 7d."
     default: ""
   propose:
     description: "drift: also store the plan that puts the drift right."
