@@ -1,0 +1,103 @@
+name: pravo
+description: >
+  Runs pravo in a workflow. plan stores a plan and comments it on the pull
+  request, apply applies a stored plan by its id, drift and discover keep one
+  issue up to date with what they find.
+branding:
+  icon: git-pull-request
+  color: blue
+inputs:
+  command:
+    description: "plan, apply, drift or discover."
+    required: true
+  working-directory:
+    description: The root of the specification, as "pravo -C" takes it.
+    default: "."
+  version:
+    description: The version of pravo that setup-pravo installs. latest is the newest full release.
+    default: latest
+  install:
+    description: Set to false when an earlier step already put pravo on PATH.
+    default: "true"
+  tags:
+    description: One key=value per line, passed as -t.
+    default: ""
+  actor:
+    description: The label that pravo records for who acts.
+    default: ${{ github.actor }}
+  reason:
+    description: Why; recorded on plans and transactions.
+    default: ${{ github.repository }}@${{ github.sha }}
+  args:
+    description: More arguments for the command, separated by spaces.
+    default: ""
+  github-token:
+    description: The token that posts the comment or the issue. It needs pull-requests write for plan, issues write for drift and discover.
+    default: ${{ github.token }}
+  comment:
+    description: "plan: comment the plan on the pull request. drift and discover: keep an issue up to date."
+    default: "true"
+  pr-number:
+    description: The pull request to comment on. By default the one that triggered the workflow.
+    default: ""
+  label:
+    description: The label of the issue that drift or discover keeps. By default pravo-drift or pravo-discover.
+    default: ""
+  plan-id:
+    description: "apply: the id of the stored plan, as plan prints it."
+    default: ""
+  store:
+    description: "plan: store the plan in the state, so that apply can use its id."
+    default: "true"
+  ttl:
+    description: "plan: how long a stored plan that is not applied is kept, such as 36h or 7d."
+    default: ""
+  propose:
+    description: "drift: also store the plan that puts the drift right."
+    default: "false"
+  due-limit:
+    description: "drift: read only the records past their refresh age, at most this many."
+    default: ""
+  fail-on-findings:
+    description: "drift and discover: fail the job when something is found. A plan that a policy refuses always fails."
+    default: "false"
+outputs:
+  exit-code:
+    description: The exit code of the pravo command.
+    value: ${{ steps.run.outputs.exit-code }}
+  plan-id:
+    description: "plan: the id of the stored plan."
+    value: ${{ steps.run.outputs.plan-id }}
+  has-changes:
+    description: "plan: true when the plan has changes."
+    value: ${{ steps.run.outputs.has-changes }}
+  report:
+    description: The path of the Markdown report.
+    value: ${{ steps.run.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - if: inputs.install == 'true'
+      uses: pravo-systems/setup-pravo@v1
+      with:
+        version: ${{ inputs.version }}
+    - id: run
+      shell: bash
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_ACTOR: ${{ inputs.actor }}
+        INPUT_REASON: ${{ inputs.reason }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        INPUT_LABEL: ${{ inputs.label }}
+        INPUT_PLAN_ID: ${{ inputs.plan-id }}
+        INPUT_STORE: ${{ inputs.store }}
+        INPUT_TTL: ${{ inputs.ttl }}
+        INPUT_PROPOSE: ${{ inputs.propose }}
+        INPUT_DUE_LIMIT: ${{ inputs.due-limit }}
+        INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/run.sh"

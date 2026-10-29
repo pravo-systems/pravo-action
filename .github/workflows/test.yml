@@ -1,0 +1,58 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pravo-systems/setup-pravo@v1
+      - name: Make a root
+        run: |
+          mkdir -p "$RUNNER_TEMP/root"
+          cat > "$RUNNER_TEMP/root/main.cue" <<'CUE'
+          package demo
+
+          import loc "pravo.dev/providers/hashicorp/local"
+
+          $local: loc.#Provider
+
+          hello: $local.#Resource.local_file & {filename: "hello.txt", content: "hello\n"}
+          CUE
+          pravo -C "$RUNNER_TEMP/root" init
+      - id: plan
+        uses: ./
+        with:
+          command: plan
+          install: "false"
+          working-directory: ${{ runner.temp }}/root
+          comment: "false"
+      - name: The plan was stored
+        run: |
+          test "${{ steps.plan.outputs.has-changes }}" = true
+          test -n "${{ steps.plan.outputs.plan-id }}"
+          grep -q 'create' "${{ steps.plan.outputs.report }}"
+      - uses: ./
+        with:
+          command: apply
+          install: "false"
+          working-directory: ${{ runner.temp }}/root
+          plan-id: ${{ steps.plan.outputs.plan-id }}
+      - id: drift
+        uses: ./
+        with:
+          command: drift
+          install: "false"
+          working-directory: ${{ runner.temp }}/root
+          comment: "false"
+          fail-on-findings: "true"
+      - name: Nothing drifted
+        run: test "${{ steps.drift.outputs.exit-code }}" = 0
