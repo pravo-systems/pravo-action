@@ -20,8 +20,8 @@ inputs:
     description: One key=value per line, passed as -t.
     default: ""
   actor:
-    description: The label that pravo records for who acts.
-    default: ${{ github.actor }}
+    description: The label that pravo records for who acts, in a state that is not sealed. A sealed state ignores it (pravo warns) and names the actor after the identity that signs.
+    default: ""
   reason:
     description: Why; recorded on plans and transactions.
     default: ${{ github.repository }}@${{ github.sha }}
