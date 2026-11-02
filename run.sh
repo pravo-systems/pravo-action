@@ -21,10 +21,15 @@ fail() { echo "::error::$*"; output exit-code 1; exit 1; }
 common=(-C "$dir")
 [ -n "${INPUT_ACTOR:-}" ] && common+=(--actor "$INPUT_ACTOR")
 [ -n "${INPUT_REASON:-}" ] && common+=(--reason "$INPUT_REASON")
+tags=()
 while IFS= read -r tag; do
 	tag=${tag//[$'\r']/}
-	[ -n "$tag" ] && common+=(-t "$tag")
+	[ -n "$tag" ] && common+=(-t "$tag") && tags+=("$tag")
 done <<< "${INPUT_TAGS:-}"
+# The tags on one line, "env=prod, region=eu": one root planned with other tags, such as
+# each environment of the specification, gets a comment and an issue of its own.
+tagline=$(IFS=,; echo "${tags[*]+"${tags[*]}"}")
+tagline=${tagline//,/, }
 extra=()
 # shellcheck disable=SC2206 # the arguments are split on spaces on purpose
 [ -n "${INPUT_ARGS:-}" ] && extra=($INPUT_ARGS)
@@ -60,6 +65,7 @@ sticky_comment() {
 		return 0
 	fi
 	marker="<!-- pravo-action:plan:$dir -->"
+	[ -n "$tagline" ] && marker="<!-- pravo-action:plan:$dir ($tagline) -->"
 	body=$work/comment.md
 	{ echo "$marker"; cat "$report"; } > "$body"
 	id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate 2>/dev/null | jq -r --arg m "$marker" '.[] | select(.body | contains($m)) | .id' | head -n 1)
@@ -75,7 +81,10 @@ sticky_comment() {
 upsert_issue() {
 	local label=$1 title=$2 found=$3 n
 	[ "${INPUT_COMMENT:-true}" = true ] || return 0
-	n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty' 2>/dev/null)
+	# With tags, the issue is the one with the label whose title names the same tags.
+	[ -n "$tagline" ] && title="$title ($tagline)"
+	n=$(gh issue list --label "$label" --state open --json number,title 2>/dev/null |
+		jq -r --arg t "$title" --arg any "${tagline:+no}" '[.[] | select($any == "" or .title == $t)][0].number // empty' 2>/dev/null)
 	if [ "$found" = true ]; then
 		if [ -n "$n" ]; then
 			gh issue edit "$n" --body-file "$report" > /dev/null || warn "could not update issue #$n"
