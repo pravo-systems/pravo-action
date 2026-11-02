@@ -231,6 +231,14 @@ func TestApplyNamesWhatWentWrong(t *testing.T) {
 	}
 	has(t, "the log", r.out, "is stale")
 
+	// An environment that takes only a promoted release refuses with 5, as a policy does.
+	r = run(t, map[string]string{"INPUT_COMMAND": "apply", "INPUT_PLAN_ID": "plan-0a1b2c3d", "INPUT_TAGS": "env=prod", "STUB_RC": "5"}, nil)
+	if r.code != 5 {
+		t.Fatalf("exit %d, want 5:\n%s", r.code, r.out)
+	}
+	has(t, "the pravo calls", r.pravo, "-C . -t env=prod apply plan-0a1b2c3d")
+	has(t, "the log", r.out, "a release that was promoted into it")
+
 	if r = run(t, map[string]string{"INPUT_COMMAND": "apply"}, nil); r.code != 1 || !strings.Contains(r.out, "apply needs plan-id") {
 		t.Errorf("apply without an id exited %d:\n%s", r.code, r.out)
 	}

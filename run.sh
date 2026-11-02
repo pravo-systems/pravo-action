@@ -142,7 +142,7 @@ apply)
 		0) echo "Applied \`$INPUT_PLAN_ID\`." ;;
 		3) echo "\`$INPUT_PLAN_ID\` is stale: the state or the specification changed since it was made. Make the plan again." ;;
 		4) echo "\`$INPUT_PLAN_ID\` was rejected: a resource is locked or reserved by someone else." ;;
-		5) echo "A policy refused \`$INPUT_PLAN_ID\`, or it is waiting for approvals." ;;
+		5) echo "A policy refused \`$INPUT_PLAN_ID\`, it is waiting for approvals, or its environment takes only a release that was promoted into it." ;;
 		*) echo "\`pravo apply $INPUT_PLAN_ID\` exited $rc." ;;
 		esac
 	} > "$report"
