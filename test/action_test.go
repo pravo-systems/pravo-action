@@ -209,6 +209,17 @@ func TestPlanErrorIsNotCommented(t *testing.T) {
 	has(t, "the log", r.out, "::error::pravo plan exited 6", "stderr of pravo")
 }
 
+// Exit code 5 before any plan, such as for a sealed state that does not exist yet, is an
+// error and not a plan that a policy refused: there is nothing to comment.
+func TestARefusalWithoutAPlanIsNotCommented(t *testing.T) {
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "STUB_RC": "5"}, nil)
+	if r.code != 5 || r.gh != "" {
+		t.Errorf("exit %d, gh calls %q:\n%s", r.code, r.gh, r.out)
+	}
+	has(t, "the log", r.out, "::error::pravo plan exited 5", "stderr of pravo")
+	lacks(t, "the log", r.out, "a policy refused")
+}
+
 func TestAnOldPravoIsRefusedWithAReason(t *testing.T) {
 	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "STUB_NO_MARKDOWN": "1"}, nil)
 	if r.code != 1 {

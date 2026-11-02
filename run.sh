@@ -119,8 +119,9 @@ plan)
 	pravo_run "$report" "${words[@]}"
 	rc=$?
 	cat "$errlog" >&2
-	# 0 is a plan and 5 a plan that a policy refused: both have a report.
-	if [ $rc != 0 ] && [ $rc != 5 ]; then
+	# 0 is a plan and 5 a plan that a policy refused: both have a report. A 5 without one
+	# is a refusal before any plan, such as a sealed state that does not exist yet.
+	if [ $rc != 0 ] && { [ $rc != 5 ] || ! grep -q '^### ' "$report"; }; then
 		echo "::error::pravo plan exited $rc"
 		output exit-code "$rc"
 		exit "$rc"
