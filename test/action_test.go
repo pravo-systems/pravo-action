@@ -152,7 +152,7 @@ func TestPlanCommentsTheStoredPlan(t *testing.T) {
 	has(t, "the pravo calls", r.pravo, "-C infra --actor bob --reason why -t env=prod -t region=eu plan --markdown --store --ttl 36h --refresh=false")
 	has(t, "the outputs", r.outputs, "plan-id=plan-0a1b2c3d", "has-changes=true", "exit-code=0")
 	has(t, "the gh calls", r.gh, "pr comment 7 --body-file")
-	has(t, "the comment", r.sent, "<!-- pravo-action:plan:infra -->", "### pravo plan: 1 to add")
+	has(t, "the comment", r.sent, "<!-- pravo-action:plan:infra (env=prod, region=eu) -->", "### pravo plan: 1 to add")
 	has(t, "the summary", r.summary, "Stored as `plan-0a1b2c3d`")
 }
 
@@ -209,6 +209,17 @@ func TestPlanErrorIsNotCommented(t *testing.T) {
 	has(t, "the log", r.out, "::error::pravo plan exited 6", "stderr of pravo")
 }
 
+// Exit code 5 before any plan, such as for a sealed state that does not exist yet, is an
+// error and not a plan that a policy refused: there is nothing to comment.
+func TestARefusalWithoutAPlanIsNotCommented(t *testing.T) {
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "STUB_RC": "5"}, nil)
+	if r.code != 5 || r.gh != "" {
+		t.Errorf("exit %d, gh calls %q:\n%s", r.code, r.gh, r.out)
+	}
+	has(t, "the log", r.out, "::error::pravo plan exited 5", "stderr of pravo")
+	lacks(t, "the log", r.out, "a policy refused")
+}
+
 func TestAnOldPravoIsRefusedWithAReason(t *testing.T) {
 	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "STUB_NO_MARKDOWN": "1"}, nil)
 	if r.code != 1 {
@@ -231,10 +242,21 @@ func TestApplyNamesWhatWentWrong(t *testing.T) {
 	}
 	has(t, "the log", r.out, "is stale")
 
+	// An environment that takes only a promoted release refuses with 5, as a policy does.
+	r = run(t, map[string]string{"INPUT_COMMAND": "apply", "INPUT_PLAN_ID": "plan-0a1b2c3d", "INPUT_TAGS": "env=prod", "STUB_RC": "5"}, nil)
+	if r.code != 5 {
+		t.Fatalf("exit %d, want 5:\n%s", r.code, r.out)
+	}
+	has(t, "the pravo calls", r.pravo, "-C . -t env=prod apply plan-0a1b2c3d")
+	has(t, "the log", r.out, "a release that was promoted into it")
+
 	if r = run(t, map[string]string{"INPUT_COMMAND": "apply"}, nil); r.code != 1 || !strings.Contains(r.out, "apply needs plan-id") {
 		t.Errorf("apply without an id exited %d:\n%s", r.code, r.out)
 	}
 }
+
+// openIssue is what gh issue list prints for one open issue.
+const openIssue = `[{"number":12,"title":"Drift found by pravo"}]`
 
 const driftReport = "### pravo drift: 1 of 2 resources changed outside pravo\n\n| Resource | What happened |\n|---|---|\n| `lost` | the object does not exist |\n"
 
@@ -251,7 +273,7 @@ func TestDriftKeepsOneIssue(t *testing.T) {
 
 	// With an open issue it is edited.
 	r = run(t, map[string]string{"INPUT_COMMAND": "drift", "STUB_RC": "2", "INPUT_PROPOSE": "true", "INPUT_FAIL_ON_FINDINGS": "true"},
-		map[string]string{"stdout.md": driftReport, "issue": "12\n"})
+		map[string]string{"stdout.md": driftReport, "issue": openIssue})
 	if r.code != 2 {
 		t.Fatalf("exit %d, want 2:\n%s", r.code, r.out)
 	}
@@ -260,11 +282,43 @@ func TestDriftKeepsOneIssue(t *testing.T) {
 	lacks(t, "the gh calls", r.gh, "issue create")
 
 	// No drift closes the issue.
-	r = run(t, map[string]string{"INPUT_COMMAND": "drift"}, map[string]string{"stdout.md": "### pravo drift: no drift\n", "issue": "12\n"})
+	r = run(t, map[string]string{"INPUT_COMMAND": "drift"}, map[string]string{"stdout.md": "### pravo drift: no drift\n", "issue": openIssue})
 	if r.code != 0 {
 		t.Fatalf("exit %d:\n%s", r.code, r.out)
 	}
 	has(t, "the gh calls", r.gh, "issue comment 12", "issue close 12")
+}
+
+// Each environment, or any other set of tags, keeps a comment and an issue of its own, so the
+// jobs that plan one root for dev and for prod do not overwrite each other.
+func TestTagsKeepTheirOwnCommentAndIssue(t *testing.T) {
+	prod := "<!-- pravo-action:plan:. (env=prod) -->"
+	comments := `[{"id":55,"body":"<!-- pravo-action:plan:. (env=dev) -->\n### dev"},{"id":56,"body":"` + prod + `\n### old"}]`
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "INPUT_TAGS": "env=prod"}, map[string]string{"stdout.md": planReport, "comments.json": comments})
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.out)
+	}
+	has(t, "the gh calls", r.gh, "-X PATCH repos/o/r/issues/comments/56")
+	lacks(t, "the gh calls", r.gh, "comments/55", "pr comment")
+	has(t, "the comment", r.sent, prod)
+
+	// The open drift issue of dev is left alone, and prod gets its own.
+	issues := `[{"number":12,"title":"Drift found by pravo (env=dev)"}]`
+	r = run(t, map[string]string{"INPUT_COMMAND": "drift", "INPUT_TAGS": "env=prod", "STUB_RC": "2"}, map[string]string{"stdout.md": driftReport, "issue": issues})
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.out)
+	}
+	has(t, "the gh calls", r.gh, "issue create --title Drift found by pravo (env=prod) --label pravo-drift")
+	lacks(t, "the gh calls", r.gh, "issue edit 12")
+
+	// Once dev has no drift, its issue is closed, and only its issue.
+	issues = `[{"number":13,"title":"Drift found by pravo (env=prod)"},{"number":12,"title":"Drift found by pravo (env=dev)"}]`
+	r = run(t, map[string]string{"INPUT_COMMAND": "drift", "INPUT_TAGS": "env=dev"}, map[string]string{"stdout.md": "### pravo drift: no drift\n", "issue": issues})
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.out)
+	}
+	has(t, "the gh calls", r.gh, "issue close 12")
+	lacks(t, "the gh calls", r.gh, "13")
 }
 
 func TestDiscoverRunsThenShows(t *testing.T) {

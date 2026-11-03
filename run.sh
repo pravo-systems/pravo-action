@@ -21,10 +21,15 @@ fail() { echo "::error::$*"; output exit-code 1; exit 1; }
 common=(-C "$dir")
 [ -n "${INPUT_ACTOR:-}" ] && common+=(--actor "$INPUT_ACTOR")
 [ -n "${INPUT_REASON:-}" ] && common+=(--reason "$INPUT_REASON")
+tags=()
 while IFS= read -r tag; do
 	tag=${tag//[$'\r']/}
-	[ -n "$tag" ] && common+=(-t "$tag")
+	[ -n "$tag" ] && common+=(-t "$tag") && tags+=("$tag")
 done <<< "${INPUT_TAGS:-}"
+# The tags on one line, "env=prod, region=eu": one root planned with other tags, such as
+# each environment of the specification, gets a comment and an issue of its own.
+tagline=$(IFS=,; echo "${tags[*]+"${tags[*]}"}")
+tagline=${tagline//,/, }
 extra=()
 # shellcheck disable=SC2206 # the arguments are split on spaces on purpose
 [ -n "${INPUT_ARGS:-}" ] && extra=($INPUT_ARGS)
@@ -60,6 +65,7 @@ sticky_comment() {
 		return 0
 	fi
 	marker="<!-- pravo-action:plan:$dir -->"
+	[ -n "$tagline" ] && marker="<!-- pravo-action:plan:$dir ($tagline) -->"
 	body=$work/comment.md
 	{ echo "$marker"; cat "$report"; } > "$body"
 	id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate 2>/dev/null | jq -r --arg m "$marker" '.[] | select(.body | contains($m)) | .id' | head -n 1)
@@ -75,7 +81,10 @@ sticky_comment() {
 upsert_issue() {
 	local label=$1 title=$2 found=$3 n
 	[ "${INPUT_COMMENT:-true}" = true ] || return 0
-	n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty' 2>/dev/null)
+	# With tags, the issue is the one with the label whose title names the same tags.
+	[ -n "$tagline" ] && title="$title ($tagline)"
+	n=$(gh issue list --label "$label" --state open --json number,title 2>/dev/null |
+		jq -r --arg t "$title" --arg any "${tagline:+no}" '[.[] | select($any == "" or .title == $t)][0].number // empty' 2>/dev/null)
 	if [ "$found" = true ]; then
 		if [ -n "$n" ]; then
 			gh issue edit "$n" --body-file "$report" > /dev/null || warn "could not update issue #$n"
@@ -110,8 +119,9 @@ plan)
 	pravo_run "$report" "${words[@]}"
 	rc=$?
 	cat "$errlog" >&2
-	# 0 is a plan and 5 a plan that a policy refused: both have a report.
-	if [ $rc != 0 ] && [ $rc != 5 ]; then
+	# 0 is a plan and 5 a plan that a policy refused: both have a report. A 5 without one
+	# is a refusal before any plan, such as a sealed state that does not exist yet.
+	if [ $rc != 0 ] && { [ $rc != 5 ] || ! grep -q '^### ' "$report"; }; then
 		echo "::error::pravo plan exited $rc"
 		output exit-code "$rc"
 		exit "$rc"
@@ -133,7 +143,7 @@ apply)
 		0) echo "Applied \`$INPUT_PLAN_ID\`." ;;
 		3) echo "\`$INPUT_PLAN_ID\` is stale: the state or the specification changed since it was made. Make the plan again." ;;
 		4) echo "\`$INPUT_PLAN_ID\` was rejected: a resource is locked or reserved by someone else." ;;
-		5) echo "A policy refused \`$INPUT_PLAN_ID\`, or it is waiting for approvals." ;;
+		5) echo "A policy refused \`$INPUT_PLAN_ID\`, it is waiting for approvals, or its environment takes only a release that was promoted into it." ;;
 		*) echo "\`pravo apply $INPUT_PLAN_ID\` exited $rc." ;;
 		esac
 	} > "$report"

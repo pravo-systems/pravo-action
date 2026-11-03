@@ -22,6 +22,7 @@ jobs:
 - `plan` stores the plan, keeps one comment on the pull request up to date, and sets the outputs `plan-id`, `has-changes`, `exit-code` and `report`. A plan that a policy refuses is commented and fails the job.
 - `apply` takes `plan-id`, and turns the exit codes 3, 4 and 5 into a line that says what to do.
 - `drift` and `discover` keep one open issue up to date with what they find and close it when nothing is left. They pass unless `fail-on-findings` is `true`.
+- `tags` takes one `NAME=VALUE` a line and passes each as `-t`. The comment and the issue are kept for each set of tags, so a job for each environment (`env=dev`, `env=prod`) of one directory reports on its own.
 
 The action installs pravo with [setup-pravo](https://github.com/pravo-systems/setup-pravo). Set `version` to pin it, or `install: false` after your own install step. The pravo it runs must have `--markdown` (0.1.0 or newer).
 
