@@ -336,3 +336,34 @@ func TestUnknownCommand(t *testing.T) {
 		t.Errorf("exit %d:\n%s", r.code, r.out)
 	}
 }
+
+const outputsReport = "### pravo plan: 0 to add, 0 to change, 0 to destroy\n\nChanges: outputs.\n\nOutputs that change: `url`.\n\nStored as `plan-0a1b2c3d`, removed on 2026-11-05 unless it is applied.\n\n<!-- pravo-kinds: outputs -->\n"
+
+// A plan that changes only outputs, moves or imports is stored: it is a change, and a workflow
+// applies it by its id, whatever the heading of the report counts.
+func TestPlanOfOutputsAloneHasChangesAndAnId(t *testing.T) {
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan"}, map[string]string{"stdout.md": outputsReport})
+	if r.code != 0 {
+		t.Fatalf("exit %d:\n%s", r.code, r.out)
+	}
+	has(t, "the outputs", r.outputs, "plan-id=plan-0a1b2c3d", "has-changes=true", "change-kinds=outputs")
+}
+
+func TestPlanNamesEveryKindThatChanges(t *testing.T) {
+	report := strings.Replace(outputsReport, "<!-- pravo-kinds: outputs -->", "<!-- pravo-kinds: resources,outputs,moves,imports -->", 1)
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan"}, map[string]string{"stdout.md": report})
+	has(t, "the outputs", r.outputs, "change-kinds=resources,outputs,moves,imports")
+}
+
+// Without a store there is no id, and the kinds still say that the plan has changes.
+func TestPlanWithoutStoreHasChangesWhenTheKindsSayIt(t *testing.T) {
+	report := "### pravo plan: 0 to add, 0 to change, 0 to destroy\n\n<!-- pravo-kinds: moves -->\n"
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan", "INPUT_STORE": "false"}, map[string]string{"stdout.md": report})
+	has(t, "the outputs", r.outputs, "plan-id=\n", "has-changes=true", "change-kinds=moves")
+}
+
+// A plan with nothing to do has no id and no kinds.
+func TestPlanWithNothingToDoHasNoKinds(t *testing.T) {
+	r := run(t, map[string]string{"INPUT_COMMAND": "plan"}, map[string]string{"stdout.md": "### pravo plan: no changes\n"})
+	has(t, "the outputs", r.outputs, "plan-id=\n", "has-changes=false", "change-kinds=\n")
+}
