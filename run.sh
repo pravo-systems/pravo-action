@@ -128,7 +128,13 @@ plan)
 	fi
 	id=$(grep -o 'plan-[0-9a-f]\{8\}' "$report" | head -n 1)
 	output plan-id "$id"
-	if grep -q '^### [^:]*: no changes' "$report"; then output has-changes false; else output has-changes true; fi
+	# The kinds of change, from the line that pravo ends the report with: resources, outputs,
+	# moves, imports, policies. A pravo that does not write it leaves them empty.
+	kinds=$(sed -n 's/^<!-- pravo-kinds: \([a-z,]*\) -->$/\1/p' "$report" | head -n 1)
+	output change-kinds "$kinds"
+	# A stored plan has changes, whatever they are: the heading says "no changes" only for
+	# a plan that would change nothing.
+	if [ -n "$id" ] || [ -n "$kinds" ] || ! grep -q '^### [^:]*: no changes' "$report"; then output has-changes true; else output has-changes false; fi
 	summary "$report"
 	sticky_comment
 	[ $rc = 5 ] && echo "::error::a policy refused the plan"

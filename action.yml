@@ -66,8 +66,11 @@ outputs:
     description: "plan: the id of the stored plan."
     value: ${{ steps.run.outputs.plan-id }}
   has-changes:
-    description: "plan: true when the plan has changes."
+    description: "plan: true when applying the plan would change the state: resources, outputs, moves, imports or policies. A plan with nothing to do is false and has no plan-id."
     value: ${{ steps.run.outputs.has-changes }}
+  change-kinds:
+    description: "plan: what the plan changes, as a comma-separated list of resources, outputs, moves, imports and policies. Empty when has-changes is false, or when the installed pravo does not say."
+    value: ${{ steps.run.outputs.change-kinds }}
   report:
     description: The path of the Markdown report.
     value: ${{ steps.run.outputs.report }}
